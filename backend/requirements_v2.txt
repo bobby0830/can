@@ -1,0 +1,16 @@
+flask
+flask-cors
+requests
+sentence-transformers
+numpy
+crawl4ai
+playwright
+aiohttp
+
+
+
+
+
+
+
+
