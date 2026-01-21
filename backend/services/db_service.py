@@ -13,7 +13,7 @@ def get_db_connection():
 def save_events_to_db(events_with_embeddings):
     """
     將提取的事件及其向量存入資料庫。
-    使用向量相似度來辨識並合併語義相同的活動 (如 "CES" 與 "Consumer Electronics Show")。
+    使用向量相似度來辨識並合併語義相同的活動。
     """
     from services.recommender import util
     import torch
@@ -52,10 +52,12 @@ def save_events_to_db(events_with_embeddings):
                         break
         
         embedding_blob = np.array(new_event['embedding'], dtype=np.float32).tobytes()
+        verified = 1 if new_event.get('verified') else 0
+        updated_at = new_event.get('updated', '')
         
         if is_duplicate and duplicate_id:
             # 智慧合併：如果新抓到的日期更準確 (非 2026-01-00)，則更新
-            cursor.execute("SELECT date, description FROM events WHERE id = ?", (duplicate_id,))
+            cursor.execute("SELECT date, description, verified FROM events WHERE id = ?", (duplicate_id,))
             current = cursor.fetchone()
             
             needs_update = False
@@ -65,23 +67,28 @@ def save_events_to_db(events_with_embeddings):
             # 如果新描述更詳細
             if len(new_event.get('description', '')) > len(current[1]) + 20:
                 needs_update = True
+            # 如果新資料已驗證而舊資料未驗證
+            if verified > current[2]:
+                needs_update = True
                 
             if needs_update:
                 cursor.execute('''
                 UPDATE events 
-                SET date = ?, description = ?, embedding = ?, link = ?, category = ?
+                SET date = ?, description = ?, embedding = ?, link = ?, category = ?, verified = ?, updated_at = ?
                 WHERE id = ?
                 ''', (new_event['date'], new_event['description'], embedding_blob, 
-                      new_event['link'], new_event.get('category', 'other'), duplicate_id))
+                      new_event['link'], new_event.get('category', 'other'), 
+                      verified, updated_at, duplicate_id))
                 updated_count += 1
             continue
             
         # 3. 插入全新事件
         cursor.execute('''
-        INSERT INTO events (date, title, description, link, category, embedding)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO events (date, title, description, link, category, verified, updated_at, embedding)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (new_event.get('date', '2026-01-00'), new_event['title'], new_event.get('description', ''), 
-              new_event.get('link', ''), new_event.get('category', 'other'), embedding_blob))
+              new_event.get('link', ''), new_event.get('category', 'other'), 
+              verified, updated_at, embedding_blob))
         saved_count += 1
         
     conn.commit()
@@ -105,7 +112,7 @@ def get_all_events_from_db():
     """
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, title, date, description, link, category, embedding FROM events")
+    cursor.execute("SELECT id, title, date, description, link, category, verified, updated_at, embedding FROM events")
     rows = cursor.fetchall()
     
     events = []
@@ -117,6 +124,8 @@ def get_all_events_from_db():
             'description': row['description'],
             'link': row['link'],
             'category': row['category'],
+            'verified': row['verified'],
+            'updated_at': row['updated_at'],
             'embedding': np.frombuffer(row['embedding'], dtype=np.float32) if row['embedding'] else None
         })
     
@@ -140,7 +149,7 @@ def export_events_to_csv(output_path):
     if not events:
         return False
         
-    keys = ['title', 'date', 'description', 'link']
+    keys = ['title', 'date', 'description', 'link', 'verified']
     try:
         with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
             dict_writer = csv.DictWriter(f, fieldnames=keys)

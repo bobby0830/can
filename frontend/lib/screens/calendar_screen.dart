@@ -31,13 +31,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
       
       for (var event in events) {
         try {
-          final date = DateTime.parse(event.date);
+          String dateStr = event.date;
+          // 處理 2026-01-00 格式，將其視為該月的第一天但標註為待定
+          if (dateStr.endsWith("-00")) {
+            dateStr = dateStr.replaceAll("-00", "-01");
+          }
+          
+          final date = DateTime.parse(dateStr);
           final day = DateTime(date.year, date.month, date.day);
           if (eventMap[day] == null) eventMap[day] = [];
           eventMap[day]!.add(event);
         } catch (e) {
           print('跳過無效日期格式的事件: ${event.title}, 日期: ${event.date}');
-          // 如果日期格式不對，可以嘗試預設到 2026-01-01 或者乾忽略
           continue; 
         }
       }
@@ -112,12 +117,41 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   itemCount: _getEventsForDay(_selectedDay!).length,
                   itemBuilder: (context, index) {
                     final event = _getEventsForDay(_selectedDay!)[index];
+                    final bool isTBD = event.date.endsWith("-00");
+                    
                     return Card(
                       margin: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       child: ListTile(
-                        title: Text(event.title),
-                        subtitle: Text(event.reason, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        trailing: Icon(Icons.chevron_right),
+                        leading: Container(
+                          padding: EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: isTBD ? Colors.orange.withOpacity(0.2) : Colors.blue.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                isTBD ? "待定" : DateFormat('MM/dd').format(DateTime.parse(event.date)),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: isTBD ? Colors.orange : Colors.blue,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        title: Text(
+                          event.title,
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          event.reason,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Icon(Icons.chevron_right, size: 16),
                         onTap: () => _showEventDetails(event),
                       ),
                     );

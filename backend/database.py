@@ -34,6 +34,14 @@ def init_db():
         embedding BLOB
     )
     ''')
+
+    # 檢查並新增缺失的欄位 (簡單遷移)
+    try:
+        cursor.execute("ALTER TABLE events ADD COLUMN verified INTEGER DEFAULT 0")
+        cursor.execute("ALTER TABLE events ADD COLUMN updated_at TEXT")
+    except sqlite3.OperationalError:
+        # 欄位已存在
+        pass
     
     conn.commit()
     conn.close()
